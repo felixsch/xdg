@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 
-module Ini
+module System.Environment.XDG.Parser.Ini
     ( IniValue(..)
     , IniFile
     , IniPair

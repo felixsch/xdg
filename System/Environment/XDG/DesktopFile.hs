@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module System.Enviroment.XDG.DesktopFile
+module System.Environment.XDG.DesktopFile
     ( DesktopFileType(..)
     , DesktopFile(..)
     , newDesktopFile
@@ -15,7 +15,7 @@ import Data.Text hiding (map, concatMap, concat)
 import qualified Data.Text.IO as TIO
 import qualified Data.Map as M
 
-import Ini
+import System.Environment.XDG.Parser.Ini
 
 data DesktopFileType = Application | Directory | Link | Unknown Text
     deriving (Show, Eq)
@@ -28,18 +28,6 @@ typeFromText x             = Unknown x
 
 instance ToValue DesktopFileType where
     toValue = IString . pack . show
-
-
-_type :: Functor f => (DesktopFileType -> f DesktopFileType) -> DesktopFile -> f DesktopFile
-_type inj df@(DesktopFile {dfType = t}) = setType df <$> inj t
-    where
-        setType df value = df { dfType = value }
-
-_name :: Functor f => (Text -> f Text) -> DesktopFile -> f DesktopFile
-_name :: inj df@(DesktopFile {dfName = n}) = setName df <$> inj n
-    where
-        setName df value = df { dfName = value}
-
 
 
 data DesktopFile = DesktopFile
@@ -119,7 +107,7 @@ iniToDesktopFile i = return $ DesktopFile
     , dfStartupWMClass = get "StartupWMClass"
     , dfURL = get "URL" }
     where
-      strict k (Just x) = x
+      strict _ (Just x) = x
       strict k Nothing  = error $ "Could not find mandatory key: " ++ k 
 
       get x = getValue "Desktop Entry" x i
@@ -128,12 +116,12 @@ iniToDesktopFile i = return $ DesktopFile
 
 
 fromMaybeWith ::  (Text -> a -> [IniPair]) -> Text -> Maybe a -> [IniPair]
-fromMaybeWith f k Nothing = []
+fromMaybeWith _ _ Nothing = []
 fromMaybeWith f k (Just v) = f k v
 
 
 
-mapToList :: (ToValue a) => Text -> (M.Map Text a) -> [IniPair]
+mapToList :: (ToValue a) => Text -> M.Map Text a -> [IniPair]
 mapToList k = M.foldrWithKey (\i x xs -> (k, (Just i, toValue x)):xs) []
 
 
