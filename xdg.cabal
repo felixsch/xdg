@@ -53,7 +53,7 @@ library
 
   -- Modules exported by the library.
   exposed-modules:   System.Environment.XDG
-                   , System.Environment.XDG.DesktopFile
+                   , System.Environment.XDG.DesktopEntry
   
   -- Modules included in this library but not exported.
   -- other-modules:       

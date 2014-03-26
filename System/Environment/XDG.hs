@@ -1,5 +1,5 @@
 module System.Environment.XDG 
- ( DesktopFile(..)
+ ( DesktopEntry(..)
  ) where
 
-import System.Environment.XDG.DesktopFile
+import System.Environment.XDG.DesktopEntry
