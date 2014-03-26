@@ -127,7 +127,7 @@ mapToList k = M.foldrWithKey (\i x xs -> (k, (Just i, toValue x)):xs) []
 
 
 desktopToIniFile :: DesktopFile -> IO IniFile
-desktopToIniFile df = return $ [("Desktop Entry", concat values)]
+desktopToIniFile df = return [("Desktop Entry", concat values)]
     where
         values = 
             [ type'
