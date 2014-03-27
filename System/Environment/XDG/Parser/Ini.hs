@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-
 module System.Environment.XDG.Parser.Ini
     ( IniValue(..)
     , IniFile
@@ -22,13 +21,10 @@ import qualified Data.Map as M
 import Data.Attoparsec.Text
 
 
-
-
 data IniValue = IBool Bool
               | IString Text
               | IArray [Text]
               | IDouble Double
-              | IComment Text
               deriving (Show, Eq)
 
 class FromValue a where
@@ -38,7 +34,7 @@ instance FromValue Text where
     fromValue (IString x) = x
     fromValue (IDouble x) = pack $ show x
     fromValue (IBool x)
-     | x == True       = "true"
+     | x               = "true"
      | otherwise       = "false"
 
 instance FromValue [Text] where
@@ -51,29 +47,28 @@ instance FromValue Int where
 instance FromValue Bool where
     fromValue (IBool x) = x
 
-
 class ToValue a where
     toValue :: a -> IniValue
 
 instance ToValue Text where
-    toValue x = IString x
+    toValue = IString
 
 instance ToValue [Text] where
-    toValue x = IArray x
+    toValue = IArray
 
 instance ToValue Int where
-    toValue x = IDouble $ fromIntegral x
+    toValue = IDouble . fromIntegral
 
 instance ToValue Double where
-    toValue x = IDouble x
+    toValue = IDouble
 
 instance ToValue Bool where
-    toValue x = IBool x
+    toValue = IBool
 
+data IniComment = IniComment Text
 type IniPair = (Text, (Maybe Text, IniValue))
-type IniSection = (Text, [IniPair])
+type IniSection = (Text, [Either IniPair IniComment])
 type IniFile  = [IniSection]
-
 
 pBool :: Parser Bool 
 pBool = string "true"  *> return True
@@ -86,6 +81,10 @@ pArray :: Parser [Text]
 pArray = many1 ( pString <* char ';')
 
 
+pComment :: Parser IniPair
+pComment = (Right . IniComment . pack) <$> (char '#' *> many anyChar)
+
+
 pValue :: Parser IniValue
 pValue = IBool <$> pBool 
     <|> IDouble <$> double
@@ -94,7 +93,7 @@ pValue = IBool <$> pBool
 
 
 pLine :: Parser IniPair
-pLine = liftA2 (,) key value
+pLine = Left <$> liftA2 (,) key value
     where
         delim c = c /= '=' && c /= '['
         key = pack <$> (many1 $ satisfy delim)
@@ -102,8 +101,6 @@ pLine = liftA2 (,) key value
                        , return Nothing ]
         value = liftA2 (,) index (char '=' *> pValue)
 
-pComment :: Parser Text
-pComment = pack <$> (char '#' *> many anyChar)
 
 pSection :: Parser Text
 pSection = pack <$> (char '[' *> (many $ notChar ']') <* char ']')
@@ -112,8 +109,7 @@ pSection = pack <$> (char '[' *> (many $ notChar ']') <* char ']')
 pIni :: Parser IniFile
 pIni = many $ skipSpace *> sections
     where
-        sections = liftA2 (,) (pSection <* endOfLine) (many (pLine <* (takeWhile $ inClass " \t\r\n")))
-
+        sections = liftA2 (,) (pSection <* endOfLine) (many (pComment <|> pLine <* (takeWhile $ inClass " \t\r\n")))
 
 
 decodeIni :: Text -> IO IniFile
@@ -128,15 +124,16 @@ encodeValue (IString x) = x
 encodeValue (IBool True) = "true"
 encodeValue (IBool False) = "false"
 encodeValue (IArray x) = foldl (\x y -> append x $ snoc y ';') "" x
-encodeValue (IComment x) = cons '#' x
 
 
 encodePairs :: [IniPair] -> [Text]
-encodePairs pairs = map (\x -> concat [key x, index x, value x]) pairs
+encodePairs = map line
     where
         maybeIndex Nothing = "="
         maybeIndex (Just "C") = "="
         maybeIndex (Just x)  = concat ["[", x, "]="]
+        line (Left x) = concat [key x, index x, value x]
+        line (Right x) = concat ["#", x]
         key   = fst
         index = maybeIndex . fst . snd
         value = encodeValue . snd . snd
@@ -144,7 +141,7 @@ encodePairs pairs = map (\x -> concat [key x, index x, value x]) pairs
 
 
 encodeIni :: IniFile -> [Text]
-encodeIni ini = concatMap (\x -> [section x] ++ (encodePairs $ snd x)) ini
+encodeIni = concatMap (\x -> section x : encodePairs $ snd x)
     where
         section x = concat ["[", fst x, "]"]
 
@@ -153,7 +150,7 @@ encodeIni ini = concatMap (\x -> [section x] ++ (encodePairs $ snd x)) ini
 lookupAll :: (Eq a) => a -> [(a,b)] -> [b]
 lookupAll key [] = []
 lookupAll key ((x,y):z)
-    | key == x   = [y] ++ lookupAll key z
+    | key == x   = y : lookupAll key z
     | otherwise  = lookupAll key z
 
 
@@ -169,11 +166,11 @@ getValue sec k ini = sectionWith ini sec (\x -> case lookup k x of
 
 
 getValueAll :: (FromValue a) => Text -> Text -> IniFile -> Maybe (M.Map Text a)
-getValueAll sec k ini = sectionWith ini sec (\x -> mkMaybe $ lookupAll k x)
+getValueAll sec k ini = sectionWith ini sec (mkMaybe . lookupAll k)
     where   
         mkMaybe [] = Nothing
-        mkMaybe x  = Just (M.fromList $ genList x)
+        mkMaybe = Just (M.fromList . genList)
 
-        genList (((Just x), val):xs) = [(x, fromValue val)] ++ genList xs
-        genList ((Nothing, val):xs) = [("C", fromValue val)] ++ genList xs
+        genList ((Just x, val):xs) = (x, fromValue val) : genList xs
+        genList ((Nothing, val):xs) = ("C", fromValue val) : genList xs
         genList [] = []

@@ -17,17 +17,29 @@ import qualified Data.Map as M
 
 import System.Environment.XDG.Parser.Ini
 
-data DesktopEntryType = Application | Directory | Link | Unknown Text
+data EntryType = Application | Directory | Link | Unknown Text
     deriving (Show, Eq)
 
-typeFromText :: Text -> DesktopEntryType
+typeFromText :: Text -> EntryType
 typeFromText "Application" = Application
 typeFromText "Directory"   = Directory
 typeFromText "Link"        = Link
 typeFromText x             = Unknown x
 
-instance ToValue DesktopEntryType where
+instance ToValue EntryType where
     toValue = IString . pack . show
+
+data Entry = Entry IniFile
+
+entryType :: Entry -> EntryType
+entryType = 
+-- _word1 :: Lens' State Word8
+--_word1 :: Functor f => (Word8 -> f Word8) -> State -> f State
+--_word1 inj (State wa wb) = flip State wb <$> inj wa
+--{-# INLINE _word1 #-}
+
+
+
 
 
 data DesktopEntry = DesktopEntry
@@ -107,8 +119,8 @@ iniToDesktopEntry i = return $ DesktopEntry
     , deStartupWMClass = get "StartupWMClass"
     , deURL = get "URL" }
     where
-      strict _ (Just x) = x
-      strict k Nothing  = error $ "Could not find mandatory key: " ++ k 
+strict _ (Just x) = x
+strict k Nothing  = error $ "Could not find mandatory key: " ++ k 
 
       get x = getValue "Desktop Entry" x i
       getAll x = getValueAll "Desktop Entry" x i
