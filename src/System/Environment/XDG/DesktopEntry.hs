@@ -4,6 +4,9 @@
 module System.Environment.XDG.DesktopEntry
     ( EntryType(..)
     , DesktopEntry(..)
+    , desktopEntryLoad
+    , name
+    , getByKey
 --    , newDesktopEntry
     , typeFromText
 --    , deLoadFile
@@ -43,6 +46,16 @@ class EntryKey a where
 
 instance EntryKey LocaleString where
     getByKey = getValueAll "Desktop Entry"
+
+instance EntryKey Text where
+    getByKey = getValue "Desktop Entry"
+
+desktopEntryLoad :: FilePath -> IO DesktopEntry
+desktopEntryLoad path = decodeIni =<< TIO.readFile path
+
+
+name :: DesktopEntry -> Maybe Text
+name = getByKey "Name"
 
 
 {-
