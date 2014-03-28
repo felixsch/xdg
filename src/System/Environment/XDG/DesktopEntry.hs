@@ -1,12 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module System.Environment.XDG.DesktopEntry
-    ( DesktopEntryType(..)
+    ( EntryType(..)
     , DesktopEntry(..)
-    , newDesktopEntry
+--    , newDesktopEntry
     , typeFromText
-    , deLoadFile
-    , deSaveFile )
+--    , deLoadFile
+--    , deSaveFile )
+    )
     where
 
 import Prelude hiding (unlines)
@@ -15,7 +17,10 @@ import Data.Text hiding (map, concatMap, concat)
 import qualified Data.Text.IO as TIO
 import qualified Data.Map as M
 
-import System.Environment.XDG.Parser.Ini
+import System.Environment.XDG.Internal.Ini
+
+type DesktopEntry = IniFile
+type LocaleString = (M.Map Text Text)
 
 data EntryType = Application | Directory | Link | Unknown Text
     deriving (Show, Eq)
@@ -26,24 +31,23 @@ typeFromText "Directory"   = Directory
 typeFromText "Link"        = Link
 typeFromText x             = Unknown x
 
+
 instance ToValue EntryType where
     toValue = IString . pack . show
 
-data Entry = Entry IniFile
-
-entryType :: Entry -> EntryType
-entryType = 
--- _word1 :: Lens' State Word8
---_word1 :: Functor f => (Word8 -> f Word8) -> State -> f State
---_word1 inj (State wa wb) = flip State wb <$> inj wa
---{-# INLINE _word1 #-}
 
 
+class EntryKey a where
+    getByKey :: (FromValue a) => Text -> DesktopEntry -> Maybe a
+    getByKey = getValue "Desktop Entry"
+
+instance EntryKey LocaleString where
+    getByKey = getValueAll "Desktop Entry"
 
 
-
+{-
 data DesktopEntry = DesktopEntry
-  { deType :: DesktopEntryType
+  { deType :: EntryType
   , deVersion :: Maybe Text 
   , deName :: (M.Map Text Text)
   , deGenericName :: Maybe (M.Map Text Text)
@@ -68,7 +72,7 @@ data DesktopEntry = DesktopEntry
   deriving (Show)
 
 
-newDesktopEntry :: DesktopEntryType -> Text -> DesktopEntry
+newDesktopEntry :: EntryType -> Text -> DesktopEntry
 newDesktopEntry type' name = DesktopEntry
     { deType = type'
     , deName = M.fromList [("C", name)]
@@ -119,11 +123,14 @@ iniToDesktopEntry i = return $ DesktopEntry
     , deStartupWMClass = get "StartupWMClass"
     , deURL = get "URL" }
     where
-strict _ (Just x) = x
-strict k Nothing  = error $ "Could not find mandatory key: " ++ k 
+      strict _ (Just x) = x
+      strict k Nothing  = error $ "Could not find mandatory key: " ++ k 
 
       get x = getValue "Desktop Entry" x i
       getAll x = getValueAll "Desktop Entry" x i
+
+
+
 
 
 
@@ -175,3 +182,5 @@ deLoadFile path = iniToDesktopEntry  =<< decodeIni =<< TIO.readFile path
 
 deSaveFile :: FilePath -> DesktopEntry -> IO ()
 deSaveFile path d = TIO.writeFile path =<< unlines . encodeIni <$> desktopToIniFile d
+
+-}

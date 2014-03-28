@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module System.Environment.XDG.Parser.Ini
+module System.Environment.XDG.Internal.Ini
     ( IniValue(..)
     , IniFile
     , IniPair

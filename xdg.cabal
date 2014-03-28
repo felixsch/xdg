@@ -53,6 +53,8 @@ library
 
   -- Modules exported by the library.
   exposed-modules:   System.Environment.XDG
+                   , System.Environment.XDG.Internal.Ini
+                   , System.Environment.XDG.Internal.Xml
                    , System.Environment.XDG.DesktopEntry
   
   -- Modules included in this library but not exported.
@@ -70,7 +72,7 @@ library
 
   
   -- Directories containing source files.
-  -- hs-source-dirs:      
+  hs-source-dirs: src/    
   
   -- Base language which the package is written in.
   default-language:    Haskell2010
