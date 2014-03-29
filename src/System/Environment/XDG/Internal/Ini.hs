@@ -67,6 +67,7 @@ instance ToValue Bool where
     toValue = IBool
 
 data IniComment = IniComment Text
+    deriving (Show)
 type IniPair = (Text, (Maybe Text, IniValue))
 type IniSection = (Text, [Either IniPair IniComment])
 type IniFile  = [IniSection]
@@ -98,9 +99,9 @@ pLine = Left <$> liftA2 (,) key value
     where
         delim c = c /= '=' && c /= '['
         key = pack <$> (many1 $ satisfy delim)
-        index = choice [  Just . pack <$> (char '[' *> (many1 $ notChar ']') <* char ']')
+        lang = choice [  Just . pack <$> (char '[' *> (many1 $ notChar ']') <* char ']')
                        , return Nothing ]
-        value = liftA2 (,) index (char '=' *> pValue)
+        value = liftA2 (,) lang (char '=' *> pValue)
 
 
 pSection :: Parser Text
@@ -113,10 +114,8 @@ pIni = many $ skipSpace *> sections
         sections = liftA2 (,) (pSection <* endOfLine) (many (pComment <|> pLine <* (takeWhile $ inClass " \t\r\n")))
 
 
-decodeIni :: Text -> IO IniFile
-decodeIni c = case parseOnly pIni c of 
-                Right x -> return x
-                Left x  -> error $ "Could not parse IniFile: " ++ x 
+decodeIni :: Text -> Either String IniFile
+decodeIni = parseOnly pIni
 
 
 encodeValue :: IniValue -> Text
@@ -130,13 +129,13 @@ encodeValue (IArray arr) = foldl (\x y -> append x $ snoc y ';') "" arr
 encodePairs :: [Either IniPair IniComment] -> [Text]
 encodePairs = map line
     where
-        maybeIndex Nothing = "="
-        maybeIndex (Just "C") = "="
-        maybeIndex (Just x)  = concat ["[", x, "]="]
-        line (Left x) = concat [key x, index x, value x]
+        maybeLang Nothing = "="
+        maybeLang (Just "C") = "="
+        maybeLang (Just x)  = concat ["[", x, "]="]
+        line (Left x) = concat [key x, lang x, value x]
         line (Right (IniComment x)) = concat ["#", x]
         key   = fst
-        index = maybeIndex . fst . snd
+        lang = maybeLang . fst . snd
         value = encodeValue . snd . snd
 
 
@@ -162,7 +161,7 @@ sectionWith ini sec func = case lookup sec ini of
 
 getValue :: (FromValue a) => Text -> Text -> IniFile -> Maybe a
 getValue sec k ini = sectionWith ini sec (\x -> case lookup k (lefts x) of
-                                                Just x -> Just $ fromValue $ snd x
+                                                Just f -> Just $ fromValue $ snd f
                                                 Nothing -> Nothing)
 
 

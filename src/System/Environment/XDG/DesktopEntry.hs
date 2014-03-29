@@ -3,12 +3,14 @@
 
 module System.Environment.XDG.DesktopEntry
     ( EntryType(..)
-    , DesktopEntry(..)
-    , desktopEntryLoad
-    , name
-    , getByKey
---    , newDesktopEntry
+    , DesktopEntry
+    , loadEntry
+    , getName
+    , getType
+    , getEntryValue
+    , getLocalizedEntryValue
     , typeFromText
+    , getC
 --    , deLoadFile
 --    , deSaveFile )
     )
@@ -16,6 +18,7 @@ module System.Environment.XDG.DesktopEntry
 
 import Prelude hiding (unlines)
 import Control.Applicative
+import Data.Maybe
 import Data.Text hiding (map, concatMap, concat)
 import qualified Data.Text.IO as TIO
 import qualified Data.Map as M
@@ -23,7 +26,7 @@ import qualified Data.Map as M
 import System.Environment.XDG.Internal.Ini
 
 type DesktopEntry = IniFile
-type LocaleString = (M.Map Text Text)
+type LocaleString = M.Map Text Text
 
 data EntryType = Application | Directory | Link | Unknown Text
     deriving (Show, Eq)
@@ -35,27 +38,47 @@ typeFromText "Link"        = Link
 typeFromText x             = Unknown x
 
 
-instance ToValue EntryType where
-    toValue = IString . pack . show
+getEntryValue :: (FromValue a) => Text -> DesktopEntry -> Maybe a
+getEntryValue = getValue "Desktop Entry"
+
+getLocalizedEntryValue :: (FromValue a) => Text -> DesktopEntry -> Maybe (M.Map Text a)
+getLocalizedEntryValue = getValueAll "Desktop Entry"
+
+getC :: LocaleString -> Text
+getC = fromJust . M.lookup "C" 
 
 
+loadEntry :: FilePath -> IO DesktopEntry
+loadEntry path = check =<< decodeIni <$> TIO.readFile path
+    where
+        check (Right x)  = return x
+        check (Left _) = error "Could not load desktop entry file"
 
-class EntryKey a where
-    getByKey :: (FromValue a) => Text -> DesktopEntry -> Maybe a
-    getByKey = getValue "Desktop Entry"
+saveEntry :: FilePath -> DesktopEntry -> IO ()
+saveEntry path entry = TIO.writeFile path (unlines $ encodeIni entry)
 
-instance EntryKey LocaleString where
-    getByKey = getValueAll "Desktop Entry"
+getType :: DesktopEntry -> EntryType
+getType = typeFromText . fromJust . getEntryValue "Type"
 
-instance EntryKey Text where
-    getByKey = getValue "Desktop Entry"
+getName :: DesktopEntry -> LocaleString
+getName = fromJust . getLocalizedEntryValue "Name"
 
-desktopEntryLoad :: FilePath -> IO DesktopEntry
-desktopEntryLoad path = decodeIni =<< TIO.readFile path
+getGenericName :: DesktopEntry -> Maybe LocaleString
+getGenericName = getLocalizedEntryValue "GenericName"
+
+getPath :: DesktopEntry -> Maybe Text
+getPath = getEntryValue "Path"
+
+getTerminal :: DesktopEntry -> Maybe Bool
+getTerminal = getEntryValue "Terminal"
+
+getExec :: DesktopEntry -> Maybe Text
+getExec = getEntryValue "Exec"
 
 
-name :: DesktopEntry -> Maybe Text
-name = getByKey "Name"
+getVersion :: DesktopEntry -> Maybe Text
+getVersion = getEntryValue "Version"
+
 
 
 {-
@@ -158,37 +181,6 @@ mapToList k = M.foldrWithKey (\i x xs -> (k, (Just i, toValue x)):xs) []
 
 
 
-desktopToIniFile :: DesktopEntry -> IO IniFile
-desktopToIniFile de = return [("Desktop Entry", concat values)]
-    where
-        values = 
-            [ type'
-            , set "Version" deVersion
-            , name
-            , setAll "GenericName" deGenericName
-            , set "NoDisplay" deNoDisplay
-            , setAll "Comment" deComment
-            , setAll "Icon" deIcon
-            , set "Hidden" deHidden
-            , set "OnlyShowIn" deOnlyShowIn
-            , set "NotShowIn" deNotShowIn
-            , set "DBusActivatable" deDBusActivatable
-            , set "TryExec" deTryExec
-            , set "Exec" deExec
-            , set "Path" dePath
-            , set "Terminal" deTerminal
-            , set "Actions" deActions
-            , set "MimeType" deMimeType
-            , set "Categories" deCategories
-            , setAll "Keywords" deKeywords
-            , set "StartupNotify" deStartupNotify
-            , set "StartupWMClass" deStartupWMClass
-            , set "URL" deURL
-            ]
-        type'  = [("Type", (Nothing, toValue $ deType de))] 
-        name   = mapToList "Name" $ deName de
-        set k f = fromMaybeWith (\k v -> [(k, (Nothing, toValue v))] ) k $ f de
-        setAll k f = fromMaybeWith mapToList k $ f de
 
 deLoadFile :: FilePath -> IO DesktopEntry
 deLoadFile path = iniToDesktopEntry  =<< decodeIni =<< TIO.readFile path
