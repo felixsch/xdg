@@ -5,10 +5,11 @@ module System.Environment.XDG.Internal.Ini
     ( IniValue(..)
     , IniFile(..)
     , IniSection
-    , from
-    , to
+    , CastValue(..)
     , encodeIni
     , decodeIni
+    , getHeader
+    , setHeader
     , getKey
     , setKey) where
 
@@ -16,12 +17,10 @@ import Data.Maybe
 import Text.Parsec
 import Text.Parsec.String
 import Control.Applicative hiding ((<|>), many)
-import Control.Monad
-import Control.Monad.IO.Class
+import Control.Monad()
+import Control.Monad.IO.Class()
 import qualified Data.Map as M
-import Debug.Trace
-import Numeric (readSigned, readFloat)
-
+import Numeric (readFloat)
 
 data IniValue = IBool Bool
               | IString String
@@ -36,45 +35,52 @@ data IniFile = IniFile [String] (M.Map String IniSection)
     deriving (Show)
 
 class CastValue a where
-    from :: IniValue -> a
+    from :: IniValue -> Maybe a
     to   :: a -> IniValue
 
 instance CastValue String where
-    from (IString x)    = x
-    from (IMap x)       = fromMaybe [] $ M.lookup "C" x
-    from (IArray [])    = []
-    from (IBool True)   = "true"
-    from (IBool False)  = "false"
-    from (IArray (x:_)) = x
+    from (IString x)    = Just x
+    from (IMap x)       = Just $ fromMaybe [] $ M.lookup "C" x
+    from (IArray [])    = Just []
+    from (IBool True)   = Just "true"
+    from (IBool False)  = Just "false"
+    from (IArray (x:_)) = Just x
+    from _              = Nothing
     to                  = IString
 
 instance CastValue [String] where
-    from (IArray x)    = x
+    from (IArray x)    = Just x
+    from (IMap x)      = Just $ M.elems x
+    from _             = Nothing
     to                 = IArray
 
 instance CastValue (M.Map String String) where
-    from (IMap x)      = x
+    from (IMap x)      = Just x
+    from (IString x)    = Just $ M.fromList [("C", x)]
+    from _             = Nothing
     to                 = IMap
 
 instance CastValue Bool where
-    from (IBool x)     = x
+    from (IBool x)     = Just x
+    from _             = Nothing
     to                 = IBool
 
 instance CastValue Int where
-    from (INumber x)   = floor x
+    from (INumber x)   = Just $ floor x
+    from _             = Nothing
     to                 = INumber . fromIntegral
 
 instance CastValue Double where
-    from (INumber x)   = x
+    from (INumber x)   = Just x
     to                 = INumber
 
 lexme:: forall a. Parser a -> Parser a
 lexme p
-    = p <* (whiteSpaces <|> comment <|> newline)
+    = p <* (whiteSpaces <|> comment <|> newl)
     where
         whiteSpaces = many $ oneOf " \t\r"
         comment = between (char '#') (char '\n') $ many $ noneOf "\n"
-        newline = lexme (string "\n")
+        newl = lexme (string "\n")
 
 pBool :: Parser Bool
 pBool 
@@ -174,8 +180,8 @@ encodeValue x (IString s) = x ++ "=" ++ s
 encodeValue x (IArray a)  = x ++ "=" ++ foldl1 (\s e -> s ++ e ++ ";") a
 encodeValue x (IMap m )   = M.foldlWithKey (genMap x) [] m 
     where 
-        genMap n l "C" x   = l ++ n ++ "=" ++ x ++ "\n"
-        genMap n l i   x   = l ++ n ++ "[" ++ i ++ "]" ++ "=" ++ x ++ "\n"
+        genMap n l "C" v   = l ++ n ++ "=" ++ v ++ "\n"
+        genMap n l i   v   = l ++ n ++ "[" ++ i ++ "]" ++ "=" ++ v ++ "\n"
 
 encodeIni :: IniFile -> String
 encodeIni
@@ -195,7 +201,7 @@ setHeader
 
 getKey :: (CastValue a) => String -> String -> IniFile -> Maybe a
 getKey
-    sec key (IniFile _ ini) = maybe Nothing (\x -> from <$> M.lookup key x) $ M.lookup sec ini
+    sec key (IniFile _ ini) = maybe Nothing (\x -> from =<< M.lookup key x) $ M.lookup sec ini
 
 setKey :: (CastValue a) => String -> String -> a -> IniFile -> IniFile
 setKey

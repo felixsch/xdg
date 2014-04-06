@@ -4,15 +4,17 @@
 module System.Environment.XDG.DesktopEntry
     ( EntryType(..)
     , DesktopEntry
+    , LocaleString
     , loadEntry
     , saveEntry
     , getName
     , getType
-    , getEntryValue
+    , getTerminal
+    , getIcon
     , getExec
     , execEntry
     , execEntryWith
-    , getLocalizedEntryValue
+    , getValue
     , typeFromText
     , getC )
     where
@@ -20,97 +22,92 @@ module System.Environment.XDG.DesktopEntry
 import Prelude
 import Control.Applicative
 import Data.Maybe
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 import qualified Data.Map as M
 import System.Process
 
 import System.Environment.XDG.Internal.Ini
 
 type DesktopEntry = IniFile
-type LocaleString = M.Map T.Text T.Text
+type LocaleString = M.Map String String
 
-data EntryType = Application | Directory | Link | Unknown T.Text
+data EntryType = Application | Directory | Link | Unknown String
     deriving (Show, Eq)
 
-typeFromText :: T.Text -> EntryType
+typeFromText :: String -> EntryType
 typeFromText "Application" = Application
 typeFromText "Directory"   = Directory
 typeFromText "Link"        = Link
 typeFromText x             = Unknown x
 
 
-getEntryValue :: (FromValue a) => T.Text -> DesktopEntry -> Maybe a
-getEntryValue = getValue "Desktop Entry"
+getValue :: (CastValue a) => String -> DesktopEntry -> Maybe a
+getValue = getKey "Desktop Entry"
 
-getLocalizedEntryValue :: (FromValue a) => T.Text -> DesktopEntry -> Maybe (M.Map T.Text a)
-getLocalizedEntryValue = getValueAll "Desktop Entry"
-
-getC :: LocaleString -> T.Text
+getC :: LocaleString -> String
 getC = fromJust . M.lookup "C" 
 
 
 loadEntry :: FilePath -> IO DesktopEntry
-loadEntry path = check =<< decodeIni <$> TIO.readFile path
+loadEntry path = check =<< decodeIni <$> readFile path
     where
         check (Right x)  = return x
         check (Left _) = error "Could not load desktop entry file"
 
 saveEntry :: FilePath -> DesktopEntry -> IO ()
-saveEntry path entry = TIO.writeFile path (T.unlines $ encodeIni entry)
+saveEntry path entry = writeFile path $ encodeIni entry
 
 getType :: DesktopEntry -> EntryType
-getType = typeFromText . fromJust . getEntryValue "Type"
+getType = typeFromText . fromJust . getValue "Type"
 
-getName :: DesktopEntry -> LocaleString
-getName = fromJust . getLocalizedEntryValue "Name"
+getName :: DesktopEntry -> String
+getName = fromJust . getValue "Name"
 
-getIcon :: DesktopEntry -> Maybe T.Text
-getIcon = getEntryValue "Icon"
+getIcon :: DesktopEntry -> Maybe String
+getIcon = getValue "Icon"
 
 getGenericName :: DesktopEntry -> Maybe LocaleString
-getGenericName = getLocalizedEntryValue "GenericName"
+getGenericName = getValue "GenericName"
 
-getPath :: DesktopEntry -> Maybe T.Text
-getPath = getEntryValue "Path"
+getPath :: DesktopEntry -> Maybe String
+getPath = getValue "Path"
 
 getTerminal :: DesktopEntry -> Maybe Bool
-getTerminal = getEntryValue "Terminal"
+getTerminal = getValue "Terminal"
 
-getExec :: DesktopEntry -> Maybe T.Text
-getExec = getEntryValue "Exec"
+getExec :: DesktopEntry -> Maybe String
+getExec = getValue "Exec"
 
-getVersion :: DesktopEntry -> Maybe T.Text
-getVersion = getEntryValue "Version"
+getVersion :: DesktopEntry -> Maybe String
+getVersion = getValue "Version"
 
 
 execEntry :: DesktopEntry -> IO ProcessHandle
-execEntry entry = spawnCommand =<< T.unpack <$> cmd exec
+execEntry entry = spawnCommand =<< cmd exec
     where
         cmd (x:_) = return x
         cmd []     = error "Invalid command specified as 'Exec' value"
-        exec = maybe [] T.words $ getExec entry
+        exec = maybe [] words $ getExec entry
 
-execEntryWith :: [T.Text] -> [T.Text] -> DesktopEntry -> IO ProcessHandle
+execEntryWith :: [String] -> [String] -> DesktopEntry -> IO ProcessHandle
 execEntryWith files urls entry = do
     c <- cmd exec
     a <- cargs exec
     spawnProcess c a
     where
-        cmd (x:xs) = return $ T.unpack x
+        cmd (x:_) = return x
         cmd []    = error "Invalid command specified as 'Exec' value"
 
-        cargs (_:xs) = return $ map T.unpack $ map re xs
-        exec = maybe [] T.words $ getExec entry
+        cargs (_:xs) = return $ map re xs
+        exec = maybe [] words $ getExec entry
 
-        first [] = T.empty
+        first [] = []
         first x  = head x
 
         re "%f" = first files
-        re "%F" = T.unwords files
+        re "%F" = unwords files
         re "%u" = first urls
-        re "%U" = T.unwords urls
-        re "%i" = maybe T.empty (\x -> T.unwords ["--icon", x]) $ getIcon entry
+        re "%U" = unwords urls
+        re "%i" = maybe [] (\x -> unwords ["--icon", x]) $ getIcon entry
         re x    = x
 
 

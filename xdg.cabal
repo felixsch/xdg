@@ -65,11 +65,10 @@ library
   
   -- Other library packages from which modules are imported.
   build-depends:      base >=4.6 && <4.7
-                    , attoparsec >= 0.11.2
-                    , text >= 1.1.0.1
+                    , transformers >= 0.3.0.0
+                    , parsec >= 0.11.2
                     , containers >= 0.5.0.0
                     , process >= 1.2.0.0
-                    , xml >= 1.3.13
 
   
   -- Directories containing source files.
