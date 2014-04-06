@@ -7,16 +7,22 @@ module System.Environment.XDG.DesktopEntry
     , LocaleString
     , loadEntry
     , saveEntry
-    , getName
-    , getType
-    , getTerminal
-    , getIcon
-    , getExec
+    , getName , setName
+    , getGenericName , setGenericName
+    , setPath, getPath
+    , getType , setType
+    , getTerminal , setTerminal
+    , getIcon , setIcon
+    , getExec , setExec
+    , getUrl , setUrl
+    , getVersion , setVersion
     , execEntry
     , execEntryWith
     , getValue
+    , setValue
     , typeFromText
-    , getC )
+    , getC , setC
+    , getLang , setLang )
     where
 
 import Prelude
@@ -43,9 +49,23 @@ typeFromText x             = Unknown x
 getValue :: (CastValue a) => String -> DesktopEntry -> Maybe a
 getValue = getKey "Desktop Entry"
 
+setValue :: (CastValue a) => String -> a -> DesktopEntry -> DesktopEntry
+setValue = setKey "Desktop Entry"
+
 getC :: LocaleString -> String
 getC = fromJust . M.lookup "C" 
 
+setC :: String -> String -> LocaleString -> LocaleString
+setC
+    = M.insert
+
+getLang :: String -> LocaleString -> Maybe String
+getLang
+    = M.lookup
+
+setLang :: String -> String -> LocaleString -> LocaleString
+setLang
+    = M.insert
 
 loadEntry :: FilePath -> IO DesktopEntry
 loadEntry path = check =<< decodeIni <$> readFile path
@@ -54,42 +74,95 @@ loadEntry path = check =<< decodeIni <$> readFile path
         check (Left _) = error "Could not load desktop entry file"
 
 saveEntry :: FilePath -> DesktopEntry -> IO ()
-saveEntry path entry = writeFile path $ encodeIni entry
+saveEntry
+    path entry = writeFile path $ encodeIni entry
 
 getType :: DesktopEntry -> EntryType
-getType = typeFromText . fromJust . getValue "Type"
+getType
+    = typeFromText . fromJust . getValue "Type"
+
+setType :: EntryType -> DesktopEntry -> DesktopEntry
+setType
+    t = setValue "Type" (show t)
+    
 
 getName :: DesktopEntry -> String
-getName = fromJust . getValue "Name"
+getName
+    = fromJust . getValue "Name"
+
+setName :: String -> DesktopEntry -> DesktopEntry
+setName
+    = setValue "Name"
 
 getIcon :: DesktopEntry -> Maybe String
-getIcon = getValue "Icon"
+getIcon
+    = getValue "Icon"
+
+setIcon :: String -> DesktopEntry -> DesktopEntry
+setIcon
+    = setValue "Icon"
 
 getGenericName :: DesktopEntry -> Maybe LocaleString
-getGenericName = getValue "GenericName"
+getGenericName
+    = getValue "GenericName"
+
+setGenericName :: LocaleString -> DesktopEntry -> DesktopEntry
+setGenericName
+    = setValue "GenericName"
 
 getPath :: DesktopEntry -> Maybe String
-getPath = getValue "Path"
+getPath
+    = getValue "Path"
+
+setPath :: String -> DesktopEntry -> DesktopEntry
+setPath
+    = setValue "Path"
 
 getTerminal :: DesktopEntry -> Maybe Bool
-getTerminal = getValue "Terminal"
+getTerminal
+    = getValue "Terminal"
+
+setTerminal :: Bool -> DesktopEntry -> DesktopEntry
+setTerminal
+    = setValue "Terminal"
 
 getExec :: DesktopEntry -> Maybe String
-getExec = getValue "Exec"
+getExec
+    = getValue "Exec"
+
+setExec :: String -> DesktopEntry -> DesktopEntry
+setExec
+    = setValue "Exec"
+
+
+getUrl :: DesktopEntry -> Maybe String
+getUrl
+    = getValue "Url"
+
+setUrl :: String -> DesktopEntry -> DesktopEntry
+setUrl
+    = setValue "Url"
 
 getVersion :: DesktopEntry -> Maybe String
-getVersion = getValue "Version"
+getVersion
+    = getValue "Version"
+
+setVersion :: String -> DesktopEntry -> DesktopEntry
+setVersion
+    = setValue "Version"
 
 
 execEntry :: DesktopEntry -> IO ProcessHandle
-execEntry entry = spawnCommand =<< cmd exec
+execEntry
+    entry = spawnCommand =<< cmd exec
     where
         cmd (x:_) = return x
         cmd []     = error "Invalid command specified as 'Exec' value"
         exec = maybe [] words $ getExec entry
 
 execEntryWith :: [String] -> [String] -> DesktopEntry -> IO ProcessHandle
-execEntryWith files urls entry = do
+execEntryWith
+    files urls entry = do
     c <- cmd exec
     a <- cargs exec
     spawnProcess c a
