@@ -1,176 +1,204 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 module System.Environment.XDG.Internal.Ini
     ( IniValue(..)
-    , IniFile
-    , IniPair
-    , FromValue(..)
-    , ToValue(..)
+    , IniFile(..)
+    , IniSection
+    , from
+    , to
     , encodeIni
     , decodeIni
-    , getValue
-    , getValueAll) where
+    , getKey
+    , setKey) where
 
-
-import Prelude hiding (concat, takeWhile)
-import Control.Applicative
-import Data.Text hiding (takeWhile, foldl,  map, concatMap)
-import Data.Either
-import qualified Data.Text.IO as TIO
+import Data.Maybe
+import Text.Parsec
+import Text.Parsec.String
+import Control.Applicative hiding ((<|>), many)
+import Control.Monad
+import Control.Monad.IO.Class
 import qualified Data.Map as M
-import Data.Attoparsec.Text
+import Debug.Trace
+import Numeric (readSigned, readFloat)
 
 
 data IniValue = IBool Bool
-              | IString Text
-              | IArray [Text]
-              | IDouble Double
-              deriving (Show, Eq)
+              | IString String
+              | INumber Double
+              | IArray [String]
+              | IMap (M.Map String String)
+              deriving(Show, Eq)
 
-class FromValue a where
-    fromValue :: IniValue -> a
 
-instance FromValue Text where
-    fromValue (IString x) = x
-    fromValue (IDouble x) = pack $ show x
-    fromValue (IBool x)
-     | x               = "true"
-     | otherwise       = "false"
-
-instance FromValue [Text] where
-    fromValue (IArray x) = x
-    fromValue  x         = [fromValue x]
-
-instance FromValue Int where
-    fromValue (IDouble x) = floor x
-
-instance FromValue Bool where
-    fromValue (IBool x) = x
-
-class ToValue a where
-    toValue :: a -> IniValue
-
-instance ToValue Text where
-    toValue = IString
-
-instance ToValue [Text] where
-    toValue = IArray
-
-instance ToValue Int where
-    toValue = IDouble . fromIntegral
-
-instance ToValue Double where
-    toValue = IDouble
-
-instance ToValue Bool where
-    toValue = IBool
-
-data IniComment = IniComment Text
+type IniSection = M.Map String IniValue
+data IniFile = IniFile [String] (M.Map String IniSection)
     deriving (Show)
-type IniPair = (Text, (Maybe Text, IniValue))
-type IniSection = (Text, [Either IniPair IniComment])
-type IniFile  = [IniSection]
 
-pBool :: Parser Bool 
-pBool = string "true"  *> return True
+class CastValue a where
+    from :: IniValue -> a
+    to   :: a -> IniValue
+
+instance CastValue String where
+    from (IString x)    = x
+    from (IMap x)       = fromMaybe [] $ M.lookup "C" x
+    from (IArray [])    = []
+    from (IBool True)   = "true"
+    from (IBool False)  = "false"
+    from (IArray (x:_)) = x
+    to                  = IString
+
+instance CastValue [String] where
+    from (IArray x)    = x
+    to                 = IArray
+
+instance CastValue (M.Map String String) where
+    from (IMap x)      = x
+    to                 = IMap
+
+instance CastValue Bool where
+    from (IBool x)     = x
+    to                 = IBool
+
+instance CastValue Int where
+    from (INumber x)   = floor x
+    to                 = INumber . fromIntegral
+
+instance CastValue Double where
+    from (INumber x)   = x
+    to                 = INumber
+
+lexme:: forall a. Parser a -> Parser a
+lexme p
+    = p <* (whiteSpaces <|> comment <|> newline)
+    where
+        whiteSpaces = many $ oneOf " \t\r"
+        comment = between (char '#') (char '\n') $ many $ noneOf "\n"
+        newline = lexme (string "\n")
+
+pBool :: Parser Bool
+pBool 
+    =   string "true"  *> return True
     <|> string "false" *> return False
 
-pString :: Parser Text
-pString = takeWhile $ notInClass ";\n"
+pNumber :: Parser Double
+pNumber = do
+  s <- getInput
+  case readFloat s of
+    [(n,s')]  -> n <$ setInput s'
+    _         -> empty
 
-pArray :: Parser [Text]
-pArray = many1 ( pString <* char ';')
+
+pString :: Parser String
+pString 
+    = (lexme $ many $ special <|> noneOf ";\n")
+    where
+        special = string "\\;"  *> return ';'
+              <|> string "\\n"  *> return '\n'
+              <|> string "\\t"  *> return '\t'
+              <|> string "\\r"  *> return '\r'
+              <|> string "\\\\" *> return '\\'
+
+pArray :: Parser [String]
+pArray 
+    = many1 (pString <* char ';')
 
 
-pComment :: Parser (Either IniPair IniComment)
-pComment = (Right . IniComment . pack) <$> (char '#' *> many anyChar)
+pIndex :: Parser String
+pIndex
+    = between (string "[") (string "]") (many $ noneOf "]")
+
+pName :: Parser String
+pName
+    = many (oneOf " \t\r") *> (lexme $ many (noneOf "=[] "))
 
 
 pValue :: Parser IniValue
-pValue = IBool <$> pBool 
-    <|> IDouble <$> double
-    <|> IArray <$> pArray
+pValue
+    =   INumber <$> pNumber
+    <|> try (IArray <$> pArray)
+    <|> try (IBool <$> pBool)
     <|> IString <$> pString
 
 
-pLine :: Parser (Either IniPair IniComment)
-pLine = Left <$> liftA2 (,) key value
+pEquals :: Parser Char
+pEquals = lexme $ char '='
+
+pEnd :: Parser ()
+pEnd = char '\n' *> return () <|> eof
+
+pNormal :: Parser (String, IniValue)
+pNormal 
+    = (,) <$> pName <* pEquals <*> pValue <* pEnd
+
+pMap :: Parser (String, IniValue)
+pMap = do 
+        name <- pName
+        pEquals
+        value <- pString
+        pEnd
+        tr <- (many1 $ translations name)
+        return (name, cob value tr)
+
     where
-        delim c = c /= '=' && c /= '['
-        key = pack <$> (many1 $ satisfy delim)
-        lang = choice [  Just . pack <$> (char '[' *> (many1 $ notChar ']') <* char ']')
-                       , return Nothing ]
-        value = liftA2 (,) lang (char '=' *> pValue)
+        cob v m = IMap $ M.fromList $ ("C", v) : m
+        translations name = (,) <$ (lexme $ string name) <*> pIndex <* pEquals <*> pString <* pEnd
 
 
-pSection :: Parser Text
-pSection = pack <$> (char '[' *> (many $ notChar ']') <* char ']')
-
+pSection :: Parser (String, IniSection)
+pSection
+    = (,) <$> name <*> values
+    where
+        name = lexme (between (char '[') (char ']') $ many $ noneOf "]") <* char '\n'
+        values = M.fromList <$> many value
+        value  = try pMap <|> try pNormal
 
 pIni :: Parser IniFile
-pIni = many $ skipSpace *> sections
+pIni
+    = IniFile <$ skip <*> header <*> sections
     where
-        sections = liftA2 (,) (pSection <* endOfLine) (many (pComment <|> pLine <* (takeWhile $ inClass " \t\r\n")))
+        header   = many $ between (char '#') (char '\n') $ many (noneOf "\n")
+        sections = M.fromList <$> (many $ skip *> pSection <* skip)
+        skip     = many $ oneOf " \r\t\n"
 
+decodeIni :: String -> Either String IniFile
+decodeIni
+    c = case parse pIni "[Ini]" c of
+          Left err -> Left $ show err
+          Right x  -> Right x
 
-decodeIni :: Text -> Either String IniFile
-decodeIni = parseOnly pIni
+encodeValue :: String -> IniValue -> String
+encodeValue x (IBool b)   = x ++ "=" ++ show b
+encodeValue x (INumber n) = x ++ "=" ++ show n
+encodeValue x (IString s) = x ++ "=" ++ s
+encodeValue x (IArray a)  = x ++ "=" ++ foldl1 (\s e -> s ++ e ++ ";") a
+encodeValue x (IMap m )   = M.foldlWithKey (genMap x) [] m 
+    where 
+        genMap n l "C" x   = l ++ n ++ "=" ++ x ++ "\n"
+        genMap n l i   x   = l ++ n ++ "[" ++ i ++ "]" ++ "=" ++ x ++ "\n"
 
-
-encodeValue :: IniValue -> Text
-encodeValue (IDouble x) = pack $ show x
-encodeValue (IString x) = x
-encodeValue (IBool True) = "true"
-encodeValue (IBool False) = "false"
-encodeValue (IArray arr) = foldl (\x y -> append x $ snoc y ';') "" arr
-
-
-encodePairs :: [Either IniPair IniComment] -> [Text]
-encodePairs = map line
+encodeIni :: IniFile -> String
+encodeIni
+    (IniFile c ini) = unlines $ (map ("# " ++) c) ++ (map (uncurry gen) $ M.toList ini)
     where
-        maybeLang Nothing = "="
-        maybeLang (Just "C") = "="
-        maybeLang (Just x)  = concat ["[", x, "]="]
-        line (Left x) = concat [key x, lang x, value x]
-        line (Right (IniComment x)) = concat ["#", x]
-        key   = fst
-        lang = maybeLang . fst . snd
-        value = encodeValue . snd . snd
+        gen x vs = "[" ++ x ++ "]\n" ++ M.foldlWithKey (\a k v -> a ++ encodeValue k v ++ "\n") [] vs
 
 
+getHeader :: IniFile -> [String]
+getHeader
+    (IniFile c _) = c
 
-encodeIni :: IniFile -> [Text]
-encodeIni = concatMap (\x -> (section $ fst x) : (encodePairs $ snd x))
+setHeader :: [String] -> IniFile -> IniFile
+setHeader
+    c (IniFile _ ini) = IniFile c ini
+
+
+getKey :: (CastValue a) => String -> String -> IniFile -> Maybe a
+getKey
+    sec key (IniFile _ ini) = maybe Nothing (\x -> from <$> M.lookup key x) $ M.lookup sec ini
+
+setKey :: (CastValue a) => String -> String -> a -> IniFile -> IniFile
+setKey
+    sec key val (IniFile co ini) =IniFile co $ M.insert sec set' ini
     where
-        section x = concat ["[", x, "]"]
-
-
-
-lookupAll :: (Eq a) => a -> [(a,b)] -> [b]
-lookupAll _ [] = []
-lookupAll key ((x,y):z)
-    | key == x   = y : lookupAll key z
-    | otherwise  = lookupAll key z
-
-
-sectionWith :: IniFile -> Text -> ([Either IniPair IniComment] -> Maybe a) -> Maybe a
-sectionWith ini sec func = case lookup sec ini of
-                            Just x -> func x
-                            Nothing -> Nothing
-
-getValue :: (FromValue a) => Text -> Text -> IniFile -> Maybe a
-getValue sec k ini = sectionWith ini sec (\x -> case lookup k (lefts x) of
-                                                Just f -> Just $ fromValue $ snd f
-                                                Nothing -> Nothing)
-
-
-getValueAll :: (FromValue a) => Text -> Text -> IniFile -> Maybe (M.Map Text a)
-getValueAll sec k ini = sectionWith ini sec (\x -> mkMaybe $ lookupAll k $ lefts x)
-    where   
-        mkMaybe [] = Nothing
-        mkMaybe x  = Just $ M.fromList $ genList x
-
-        genList ((Just x, val):xs) = (x, fromValue val) : genList xs
-        genList ((Nothing, val):xs) = ("C", fromValue val) : genList xs
-        genList [] = []
+        set' = maybe (M.fromList [(key, to val)]) (M.insert key (to val)) $ M.lookup sec ini
