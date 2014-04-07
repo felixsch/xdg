@@ -6,20 +6,18 @@ module System.Environment.XDG.Internal.Ini
     , IniFile(..)
     , IniSection
     , CastValue(..)
-    , encodeIni
-    , decodeIni
-    , getHeader
-    , setHeader
-    , getKey
-    , setKey) where
+    , encodeIni , decodeIni
+    , getHeader , setHeader
+    , getKey , setKey
+    , getSection , setSection
+    ) where
 
+import Control.Monad
+import Control.Applicative hiding ((<|>), many)
 import Data.Maybe
+import qualified Data.Map as M
 import Text.Parsec
 import Text.Parsec.String
-import Control.Applicative hiding ((<|>), many)
-import Control.Monad()
-import Control.Monad.IO.Class()
-import qualified Data.Map as M
 import Numeric (readFloat)
 
 data IniValue = IBool Bool
@@ -97,7 +95,7 @@ pNumber = do
 
 pString :: Parser String
 pString 
-    = (lexme $ many $ special <|> noneOf ";\n")
+    = lexme $ many $ special <|> noneOf ";\n"
     where
         special = string "\\;"  *> return ';'
               <|> string "\\n"  *> return '\n'
@@ -116,7 +114,7 @@ pIndex
 
 pName :: Parser String
 pName
-    = many (oneOf " \t\r") *> (lexme $ many (noneOf "=[] "))
+    = many (oneOf " \t\r") *> lexme (many $ noneOf "=[] ")
 
 
 pValue :: Parser IniValue
@@ -143,12 +141,12 @@ pMap = do
         pEquals
         value <- pString
         pEnd
-        tr <- (many1 $ translations name)
+        tr <- many1 $ translations name
         return (name, cob value tr)
 
     where
         cob v m = IMap $ M.fromList $ ("C", v) : m
-        translations name = (,) <$ (lexme $ string name) <*> pIndex <* pEquals <*> pString <* pEnd
+        translations name = (,) <$ lexme (string name) <*> pIndex <* pEquals <*> pString <* pEnd
 
 
 pSection :: Parser (String, IniSection)
@@ -164,7 +162,7 @@ pIni
     = IniFile <$ skip <*> header <*> sections
     where
         header   = many $ between (char '#') (char '\n') $ many (noneOf "\n")
-        sections = M.fromList <$> (many $ skip *> pSection <* skip)
+        sections = M.fromList <$> many (skip *> pSection <* skip)
         skip     = many $ oneOf " \r\t\n"
 
 decodeIni :: String -> Either String IniFile
@@ -185,7 +183,7 @@ encodeValue x (IMap m )   = M.foldlWithKey (genMap x) [] m
 
 encodeIni :: IniFile -> String
 encodeIni
-    (IniFile c ini) = unlines $ (map ("# " ++) c) ++ (map (uncurry gen) $ M.toList ini)
+    (IniFile c ini) = unlines $ map ("# " ++) c ++ map (uncurry gen) (M.toList ini)
     where
         gen x vs = "[" ++ x ++ "]\n" ++ M.foldlWithKey (\a k v -> a ++ encodeValue k v ++ "\n") [] vs
 
@@ -198,10 +196,18 @@ setHeader :: [String] -> IniFile -> IniFile
 setHeader
     c (IniFile _ ini) = IniFile c ini
 
+getSection :: String -> IniFile -> Maybe IniSection
+getSection
+    sec (IniFile _ ini) = M.lookup sec ini
+
+setSection :: String -> IniSection -> IniFile -> IniFile
+setSection
+    sec s (IniFile co ini) = IniFile co $ M.insert sec s ini
+
 
 getKey :: (CastValue a) => String -> String -> IniFile -> Maybe a
 getKey
-    sec key (IniFile _ ini) = maybe Nothing (\x -> from =<< M.lookup key x) $ M.lookup sec ini
+    sec key (IniFile _ ini) = maybe Nothing (from <=< M.lookup key) $ M.lookup sec ini
 
 setKey :: (CastValue a) => String -> String -> a -> IniFile -> IniFile
 setKey

@@ -56,6 +56,7 @@ library
                    , System.Environment.XDG.Internal.Ini
                    , System.Environment.XDG.Internal.Xml
                    , System.Environment.XDG.DesktopEntry
+                   , System.Environment.XDG.MimeApps
   
   -- Modules included in this library but not exported.
   -- other-modules:       
