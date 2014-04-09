@@ -5,8 +5,7 @@ module System.Environment.XDG.DesktopEntry
     ( EntryType(..)
     , DesktopEntry
     , LocaleString
-    , loadEntry
-    , saveEntry
+    , loadEntry , saveEntry , saveEntryWith
     , getName , setName
     , getGenericName , setGenericName
     , setPath, getPath
@@ -33,7 +32,7 @@ import System.Process
 
 import System.Environment.XDG.Internal.Ini
 
-type DesktopEntry = IniFile
+data DesktopEntry = DesktopEntry FilePath IniFile
 type LocaleString = M.Map String String
 
 data EntryType = Application | Directory | Link | Unknown String
@@ -47,10 +46,12 @@ typeFromText x             = Unknown x
 
 
 getValue :: (CastValue a) => String -> DesktopEntry -> Maybe a
-getValue = getKey "Desktop Entry"
+getValue 
+    key (DesktopEntry _ ini) = getKey "Desktop Entry" key ini
 
 setValue :: (CastValue a) => String -> a -> DesktopEntry -> DesktopEntry
-setValue = setKey "Desktop Entry"
+setValue 
+    key val (DesktopEntry path ini) = DesktopEntry path $ setKey "Desktop Entry" key val ini
 
 getC :: LocaleString -> String
 getC = fromJust . M.lookup "C" 
@@ -70,12 +71,16 @@ setLang
 loadEntry :: FilePath -> IO DesktopEntry
 loadEntry path = check =<< decodeIni <$> readFile path
     where
-        check (Right x)  = return x
+        check (Right x)  = return $ DesktopEntry path x
         check (Left _) = error "Could not load desktop entry file"
 
-saveEntry :: FilePath -> DesktopEntry -> IO ()
+saveEntry :: DesktopEntry -> IO ()
 saveEntry
-    path entry = writeFile path $ encodeIni entry
+    (DesktopEntry path entry) = writeFile path $ encodeIni entry
+
+saveEntryWith :: FilePath -> DesktopEntry -> IO ()
+saveEntryWith
+    path (DesktopEntry _ entry) = writeFile path $ encodeIni entry
 
 getType :: DesktopEntry -> EntryType
 getType
