@@ -5,6 +5,7 @@ module System.Environment.XDG.DesktopEntry
     ( EntryType(..)
     , DesktopEntry
     , LocaleString
+    , newEntry
     , loadEntry , saveEntry , saveEntryWith
     , getName , setName
     , getGenericName , setGenericName
@@ -67,6 +68,10 @@ getLang
 setLang :: String -> String -> LocaleString -> LocaleString
 setLang
     = M.insert
+
+newEntry :: FilePath -> DesktopEntry
+newEntry
+    path = DesktopEntry path $ IniFile [] $ M.fromList [("Desktp Entry", M.empty)]
 
 loadEntry :: FilePath -> IO DesktopEntry
 loadEntry path = check =<< decodeIni <$> readFile path

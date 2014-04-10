@@ -1,5 +1,7 @@
 module System.Environment.XDG.MimeApps
     ( MimeApps
+    , getSystemDefaults
+    , newMimeApps
     , loadMimeApps, saveMimeApps
     , getAssociation, setAssociation
     , getDefault, setDefault
@@ -17,6 +19,15 @@ import System.Environment.XDG.Internal.Ini
 
 type MimeApps = IniFile
 
+getSystemDefaults :: IO MimeApps
+getSystemDefaults
+    = loadMimeApps "/usr/share/applications/defaults.list"
+
+
+newMimeApps :: MimeApps
+newMimeApps
+    = IniFile [] $ M.fromList [ ("Default Applications", M.empty)
+                              , ("Added Associations", M.empty)]
 
 loadMimeApps :: FilePath -> IO MimeApps
 loadMimeApps
