@@ -58,6 +58,9 @@ library
                    , System.Environment.XDG.DesktopEntry
                    , System.Environment.XDG.MimeApps
                    , System.Environment.XDG.BaseDir
+                   , System.Environment.XDG.Menu
+                   , System.Environment.XDG.RecentFiles
+                   , System.Environment.XDG.MimeType
   
   -- Modules included in this library but not exported.
   -- other-modules:       

@@ -1,1 +1,1 @@
-module System.Environment.MimeType where
+module System.Environment.XDG.MimeType where
