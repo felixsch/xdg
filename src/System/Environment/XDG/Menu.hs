@@ -1,1 +1,1 @@
-module System.Enviroment.XDG.Menu where
+module System.Environment.XDG.Menu where
