@@ -3,7 +3,7 @@
 
 module System.Environment.XDG.DesktopEntry
     ( EntryType(..)
-    , DesktopEntry
+    , DesktopEntry(..)
     , LocaleString
     , newEntry
     , loadEntry , saveEntry , saveEntryWith
