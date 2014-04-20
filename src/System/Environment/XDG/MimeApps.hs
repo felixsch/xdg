@@ -58,7 +58,7 @@ setDefault
 
 addDefault :: String -> String -> MimeApps -> MimeApps
 addDefault
-    sec val ini = setKey "Added Associations" sec val $ setKey "DefaultApplications" sec val ini
+    sec val ini = setKey "Added Associations" sec val $ setKey "Default Applications" sec val ini
 
 getDefaultApps :: MimeApps -> Maybe [(String, IniValue)]
 getDefaultApps
