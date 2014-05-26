@@ -21,9 +21,10 @@ Currently this piece of software is far from really usable. That's why I don't p
 
 __To install__:
 
-> git clone http://github.com/felixsch/xdg
-> cd xdg
-> cabal configure && cabal install
+    git clone http://github.com/felixsch/xdg
+    cd xdg
+    cabal configure
+    cabal install
 
 __This library depends currently on__:
 
