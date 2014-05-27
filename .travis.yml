@@ -1,1 +1,3 @@
 language: haskell
+notifications:
+    - "chat.freenode.net#felixsch"
