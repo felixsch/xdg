@@ -2,14 +2,15 @@ module System.Environment.XDG.Autostart
   ( getUserAutostartDir
   , getAutostartDirs
   , loadAutostartFiles
+  , loadAutostartFilesWith
   ) where
 
 import Control.Applicative
 
-import qualified Data.Map as M
+import Data.Maybe       (fromMaybe)
 
-import System.FilePath
-import System.Directory 
+import System.FilePath  ((</>))
+import System.Directory (getDirectoryContents)
 
 import System.Environment.XDG.BaseDir
 import System.Environment.XDG.DesktopEntry
@@ -26,11 +27,19 @@ getAutostartDirs
 
 loadAutostartFiles :: FilePath -> IO [DesktopEntry]
 loadAutostartFiles
-    path = (map filterH) <$> (mapM loadEntry =<< filterD <$> getDirectoryContents path)
+    path = filter isHidden <$> (mapM loadEntry =<< filter isDesktopFile <$> getDirectoryContents path)
+
+
+loadAutostartFilesWith :: String -> FilePath -> IO [DesktopEntry]
+loadAutostartFilesWith
+    de path = filter needToStart <$> loadAutostartFiles path
     where
-      filterH = filter (getValue "Hidden")
-      filterD = filter isDesktopFile
-      
+        needToStart df = maybe (isNotShowIn df) (elem de) $ getValue "OnlyShowIn" df
+        isNotShowIn = maybe False (notElem de) . getValue "NotShowIn"
+
+isHidden :: DesktopEntry -> Bool
+isHidden
+    = fromMaybe False . getValue "Hidden"
 
 isDesktopFile :: FilePath -> Bool
 isDesktopFile
