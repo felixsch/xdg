@@ -71,7 +71,7 @@ setLang
 
 newEntry :: FilePath -> DesktopEntry
 newEntry
-    path = DesktopEntry path $ IniFile [] $ M.fromList [("Desktp Entry", M.empty)]
+    path = DesktopEntry path $ IniFile [] $ M.fromList [("Desktop Entry", M.empty)]
 
 loadEntry :: FilePath -> IO DesktopEntry
 loadEntry path = check =<< decodeIni <$> readFile path
