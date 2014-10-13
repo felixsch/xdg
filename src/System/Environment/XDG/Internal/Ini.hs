@@ -214,3 +214,4 @@ setKey
     sec key val (IniFile co ini) =IniFile co $ M.insert sec set' ini
     where
         set' = maybe (M.fromList [(key, to val)]) (M.insert key (to val)) $ M.lookup sec ini
+

@@ -1,11 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleInstances #-}
 
 module System.Environment.XDG.DesktopEntry
     ( EntryType(..)
     , DesktopEntry(..)
     , LocaleString
-    , newEntry
+    , newEntry, newBasicApplication
     , loadEntry , saveEntry , saveEntryWith
     , getName , setName
     , getGenericName , setGenericName
@@ -22,15 +20,20 @@ module System.Environment.XDG.DesktopEntry
     , setValue
     , typeFromText
     , getC , setC
-    , getLang , setLang )
+    , getLang , setLang
+    , findEntry)
     where
 
 import Prelude
 import Control.Applicative
 import Data.Maybe
+import Data.List
 import qualified Data.Map as M
 import System.Process
+import System.Directory
+import System.FilePath.Posix
 
+import System.Environment.XDG.BaseDir
 import System.Environment.XDG.Internal.Ini
 
 data DesktopEntry = DesktopEntry FilePath IniFile
@@ -72,6 +75,15 @@ setLang
 newEntry :: FilePath -> DesktopEntry
 newEntry
     path = DesktopEntry path $ IniFile [] $ M.fromList [("Desktop Entry", M.empty)]
+
+newBasicApplication :: FilePath -> String -> String -> DesktopEntry
+newBasicApplication path name exec = setType Application
+                    $ setValue "Version"  "1.0"
+                    $ setValue "NoDisplay" True
+                    $ setValue "Encoding" "UTF-8"
+                    $ setExec  exec
+                    $ setName  name
+                    $ newEntry path
 
 loadEntry :: FilePath -> IO DesktopEntry
 loadEntry path = check =<< decodeIni <$> readFile path
@@ -192,6 +204,23 @@ execEntryWith
         re "%U" = unwords urls
         re "%i" = maybe [] (\x -> unwords ["--icon", x]) $ getIcon entry
         re x    = x
+
+
+findEntry :: String -> IO (Maybe FilePath)
+findEntry name = do
+    user <- getUserDataDir
+    system <- getDataDirs
+    checkPath (user : system)
+  where
+      checkPath (x:xs) = do
+          files <- getDirectoryContents (x </> "applications")
+          case find ((==) name . takeBaseName) files of
+              Just found -> return $ Just (x </> "applications" </> found)
+              Nothing    -> checkPath xs
+      checkPath []     = return Nothing
+
+
+
 
 
 
