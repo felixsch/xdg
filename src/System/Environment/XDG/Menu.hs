@@ -8,7 +8,7 @@ import Control.Applicative
 
 import System.FilePath ((</>))
 
-import qualified Text.XML.Light as XML
+-- import qualified Text.XML.Light as XML
 
 import System.Environment.XDG.BaseDir
 
